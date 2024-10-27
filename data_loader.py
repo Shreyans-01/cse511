@@ -59,17 +59,27 @@ class DataLoader:
 
         # TODO: Your code here
         with self.driver.session() as session:
-            session.run("""
-                LOAD CSV WITH HEADERS FROM 'file:///yellow_tripdata_2022-03.csv' AS row
-                MERGE (pickup:Location {name: toInteger(row.PULocationID)})
-                MERGE (dropoff:Location {name: toInteger(row.DOLocationID)})
-                CREATE (pickup)-[:TRIP {
-                    distance: toFloat(row.trip_distance),
-                    fare: toFloat(row.fare_amount),
-                    pickup_dt: datetime(row.tpep_pickup_datetime),
-                    dropoff_dt: datetime(row.tpep_dropoff_datetime)
-                }]->(dropoff)
-            """)
+            # Create Location nodes
+            location_ids = set(trips["PULocationID"]).union(set(trips["DOLocationID"]))
+            for loc_id in location_ids:
+                session.run("MERGE (l:Location {name: $id})", id=int(loc_id))
+
+            # Create TRIP relationships with properties
+            for _, row in trips.iterrows():
+                session.run("""
+                    MATCH (start:Location {name: $start_id}), (end:Location {name: $end_id})
+                    MERGE (start)-[r:TRIP {
+                        distance: $distance,
+                        fare: $fare,
+                        pickup_dt: datetime($pickup),
+                        dropoff_dt: datetime($dropoff)
+                    }]->(end)
+                """, start_id=int(row["PULocationID"]),
+                     end_id=int(row["DOLocationID"]),
+                     distance=float(row["trip_distance"]),
+                     fare=float(row["fare_amount"]),
+                     pickup=row["tpep_pickup_datetime"],
+                     dropoff=row["tpep_dropoff_datetime"])
 
 
 def main():
